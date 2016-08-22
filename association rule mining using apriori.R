@@ -10,33 +10,45 @@ dat<-read.csv("../swarup/Desktop/adult_umlaut.csv",encoding = "UTF-8")
 
 #making the data into factor type
 dat<-as.data.frame(sapply(dat,as.factor))
-dat1<-as(dat,"transactions")
-
-#Defining the lhs and rhs of the data
-lhs1<-dat1@itemInfo$labels[dat1@itemInfo$variables!="income"]
-rhs1<-dat1@itemInfo$labels[dat1@itemInfo$variables=="income"]
-
-
-#Calclulating all the item sets with support>0.001
-s1<-apriori(dat,parameter = list(support = 0.0001, target = "frequent",maxlen=3),appearance = list(items=sample(lhs1,round(length(lhs1),0)),default="none") )
-
-#Defining the rhs
-s2<-apriori(dat,parameter = list(support = 0, target = "frequent",maxlen=1),appearance = list(items=rhs1,default="none") )
-
-#Generating the rules from the itemsets 
-ruleSet<-new("rules",lhs=items(s1),rhs=sample(items(s2)[1],size = length(s1),replace=TRUE),info=info(s1))
-ruleSet2<-new("rules",lhs=items(s1),rhs=sample(items(s2)[2],size = length(s1),replace=TRUE),info=info(s1))
-ruleSet<-c(ruleSet,ruleSet2)
-
-#Generating  the rule parameters
-system.time(df<-as.data.frame(list(support=interestMeasure(x = ruleSet,measure = "support",transactions = dat1),
-                       confidence=interestMeasure(x = ruleSet,measure = "confidence",transactions = dat1),
-                       lift=s1@quality$support,
-                       lhs.support=coverage(x = ruleSet,transactions = dat1))))
-ruleSet@quality<-df
-
+rule_calc<-function(dat,sprt,maxs){
+  dat1<-as(dat,"transactions")
+  tar_var<-names(dat)[ncol(dat)]
+  idx<-which(itemFrequency(dat1)>=sprt | itemInfo(dat1)$variables==tar_var)  
+  dat2<-dat1[,idx]
+  
+  #Defining the lhs and rhs of the data
+  lhs1<-dat2@itemInfo$labels[dat2@itemInfo$variables!=tar_var]
+  rhs1<-dat2@itemInfo$labels[dat2@itemInfo$variables==tar_var]
+  
+  
+  #Calclulating all the item sets with support>0.001
+  s1<-apriori(dat2,parameter = list(support = sprt, target = "frequent",maxlen=maxs),appearance = list(items=lhs1,default="none") )
+  
+  #Defining the rhs
+  s2<-apriori(dat2,parameter = list(support = 0, target = "frequent",maxlen=1),appearance = list(items=rhs1,default="none") )
+  
+  #Generating the rules from the itemsets 
+  ruleSet<-new("rules",lhs=items(s1),rhs=sample(items(s2)[1],size = length(s1),replace=TRUE),info=info(s1))
+  ruleSet2<-new("rules",lhs=items(s1),rhs=sample(items(s2)[2],size = length(s1),replace=TRUE),info=info(s1))
+  ruleSet<-c(ruleSet,ruleSet2)
+  
+  #Generating  the rule parameters
+  cat("\n calculating support \n")
+  i=system.time(ruleSet@quality<-data.frame(support=support(items(ruleSet),transactions = dat2)))
+  print(i)
+  ruleSet@quality$lhs.support<-c(s1@quality$support,s1@quality$support)
+  ruleSet@quality$confidence<-ruleSet@quality$support/ruleSet@quality$lhs.support
+  ruleSet@quality$confidence[is.na(ruleSet@quality$confidence)]<-0
+  cat("\n calculating lift \n")
+  i=system.time(ruleSet@quality$lift<-interestMeasure(ruleSet,"lift",transactions = dat2))
+  print(i)
+  cat("\n converting to a data frame \n")
+  i=system.time(df1<-data.frame(condition=labels(lhs(ruleSet),itemSep=", "), consequence = labels(rhs(ruleSet),itemSep=", "), quality(ruleSet)))
+  print(i)
+  return(list(ruleSet,df1))
+}
 #Fomating the output
-df1<-data.frame(condition=labels(lhs(ruleSet),itemSep=", "), consequence = labels(lhs(ruleSet),itemSep=", "), quality(ruleSet))
+system.time(df1<-data.frame(condition=labels(lhs(ruleSet),itemSep=", "), consequence = labels(rhs(ruleSet),itemSep=", "), quality(ruleSet)))
 
 #Stress testing the automatic rule generation for bugs
 maxi<-0
